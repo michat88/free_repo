@@ -17,45 +17,6 @@ import javax.crypto.spec.SecretKeySpec
 import kotlin.random.Random
 
 // ============================================================================
-// 1. EMTURBOVID EXTRACTOR
-// ============================================================================
-open class EmturbovidExtractor : ExtractorApi() {
-    override var name = "Emturbovid"
-    override var mainUrl = "https://emturbovid.com"
-    override val requiresReferer = false
-
-    override suspend fun getUrl(url: String, referer: String?): List<ExtractorLink>? {
-        val finalReferer = referer ?: "$mainUrl/"
-        val sources = mutableListOf<ExtractorLink>()
-        
-        try {
-            val response = app.get(url, referer = finalReferer)
-            val playerScript = response.document.selectXpath("//script[contains(text(),'var urlPlay')]").html()
-            
-            if (playerScript.isNotBlank()) {
-                val m3u8Url = playerScript.substringAfter("var urlPlay = '").substringBefore("'")
-                val originUrl = try { URI(finalReferer).let { "${it.scheme}://${it.host}" } } catch (e: Exception) { mainUrl }
-                
-                val headers = mapOf(
-                    "User-Agent" to "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
-                    "Referer" to finalReferer,
-                    "Origin" to originUrl
-                )
-                
-                sources.add(newExtractorLink(source = name, name = name, url = m3u8Url, type = ExtractorLinkType.M3U8) {
-                    this.referer = finalReferer
-                    this.quality = Qualities.Unknown.value
-                    this.headers = headers
-                })
-            }
-        } catch (e: Exception) {
-            e.printStackTrace()
-        }
-        return sources
-    }
-}
-
-// ============================================================================
 // 2. P2P EXTRACTOR (ORIGINAL - DO NOT TOUCH)
 // ============================================================================
 open class P2PExtractor : ExtractorApi() {
