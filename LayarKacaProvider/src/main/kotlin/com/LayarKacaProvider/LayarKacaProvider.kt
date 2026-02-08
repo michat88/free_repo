@@ -4,7 +4,11 @@ import com.lagradost.cloudstream3.*
 import com.lagradost.cloudstream3.utils.ExtractorLink
 import com.lagradost.cloudstream3.utils.AppUtils.tryParseJson
 import com.lagradost.cloudstream3.utils.loadExtractor
+import com.lagradost.cloudstream3.utils.Qualities
+import com.lagradost.cloudstream3.utils.ExtractorLinkType
+import com.lagradost.cloudstream3.utils.newExtractorLink
 import org.jsoup.nodes.Element
+import java.net.URI
 
 class LayarKacaProvider : MainAPI() {
     override var mainUrl = "https://tv8.lk21official.cc"
@@ -159,7 +163,7 @@ class LayarKacaProvider : MainAPI() {
         }
     }
 
-    // --- LOAD LINKS (CLEAN & PURE EXTRACTOR) ---
+    // --- LOAD LINKS (DENGAN CADANGAN MANUAL) ---
     override suspend fun loadLinks(
         data: String,
         isCasting: Boolean,
@@ -176,20 +180,64 @@ class LayarKacaProvider : MainAPI() {
             document = app.get(currentUrl).document
         }
 
-        // 2. Kumpulkan Link
         val playerLinks = document.select("ul#player-list li a").map { it.attr("data-url").ifEmpty { it.attr("href") } }
         val mainIframe = document.select("iframe#main-player").attr("src")
-        
-        // Gabungkan dan filter
         val allSources = (playerLinks + mainIframe).filter { it.isNotBlank() }.map { fixUrl(it) }.distinct()
 
-        // 3. Panggil Extractor
-        // HANYA memanggil Extractor.kt. Jika url cocok dengan salah satu extractor yang terdaftar,
-        // dia akan diproses. Jika tidak, dia akan diabaikan.
         allSources.forEach { url ->
-            loadExtractor(url, currentUrl, subtitleCallback, callback)
-        }
+            // COBA 1: Pakai Extractor Resmi (Extractor.kt)
+            // Timeout sedikit dinaikkan supaya tidak gampang error
+            val directLoaded = try {
+                loadExtractor(url, currentUrl, subtitleCallback, callback)
+            } catch (e: Exception) {
+                false
+            }
+            
+            // COBA 2: Jika Extractor gagal, pakai cara MANUAL (Unwrap)
+            // Ini yang tadi saya hapus, sekarang kita kembalikan sebagai "ban serep"
+            if (!directLoaded) {
+                try {
+                    val response = app.get(url, referer = currentUrl)
+                    val wrapperUrl = response.url
+                    val iframePage = response.document
 
+                    // Cari iframe lagi di dalam (Nested Iframes)
+                    iframePage.select("iframe").forEach { 
+                         // Coba load lagi dengan extractor
+                        loadExtractor(fixUrl(it.attr("src")), wrapperUrl, subtitleCallback, callback) 
+                    }
+                    
+                    // Regex Sakti (Brute Force link video)
+                    // Mencari apapun yang berakhiran .m3u8 atau .mp4 di dalam kode HTML
+                    val scriptHtml = iframePage.html().replace("\\/", "/")
+                    Regex("(?i)https?://[^\"]+\\.(m3u8|mp4)(?:\\?[^\"']*)?").findAll(scriptHtml).forEach { match ->
+                        val streamUrl = match.value
+                        val isM3u8 = streamUrl.contains("m3u8", ignoreCase = true)
+                        
+                        // Header palsu biar server ngira kita browser beneran
+                        val originUrl = try { URI(wrapperUrl).let { "${it.scheme}://${it.host}" } } catch(e:Exception) { "https://playeriframe.sbs" }
+                        val headers = mapOf(
+                            "User-Agent" to "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
+                            "Referer" to wrapperUrl,
+                            "Origin" to originUrl
+                        )
+
+                        callback.invoke(
+                            newExtractorLink(
+                                source = "LK21 VIP (Cadangan)", // Saya namain beda biar ketahuan kalau ini hasil regex
+                                name = "LK21 VIP (Cadangan)",
+                                url = streamUrl,
+                                type = if (isM3u8) ExtractorLinkType.M3U8 else ExtractorLinkType.VIDEO
+                            ) {
+                                this.referer = wrapperUrl
+                                this.quality = Qualities.Unknown.value
+                                this.headers = headers
+                            }
+                        )
+                    }
+                } catch (e: Exception) {}
+            }
+        }
         return true
     }
 }
