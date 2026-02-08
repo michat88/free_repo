@@ -1,11 +1,11 @@
 package com.LayarKacaProvider
 
 import com.lagradost.cloudstream3.*
-import com.lagradost.cloudstream3.utils.AppUtils.tryParseJson
 import com.lagradost.cloudstream3.utils.ExtractorLink
-import com.lagradost.cloudstream3.utils.ExtractorLinkType
-import com.lagradost.cloudstream3.utils.Qualities
+import com.lagradost.cloudstream3.utils.AppUtils.tryParseJson
 import com.lagradost.cloudstream3.utils.loadExtractor
+import com.lagradost.cloudstream3.utils.Qualities
+import com.lagradost.cloudstream3.utils.ExtractorLinkType
 import com.lagradost.cloudstream3.utils.newExtractorLink
 import org.jsoup.nodes.Element
 import java.net.URI
@@ -16,14 +16,6 @@ class LayarKacaProvider : MainAPI() {
     override val hasMainPage = true
     override var lang = "id"
     override val supportedTypes = setOf(TvType.Movie, TvType.TvSeries)
-
-    // Header khusus meniru browser Linux Chrome (sesuai analisa cURL)
-    private val turboHeaders = mapOf(
-        "User-Agent" to "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/137.0.0.0 Safari/537.36",
-        "Sec-Fetch-Dest" to "iframe",
-        "Sec-Fetch-Site" to "cross-site",
-        "Upgrade-Insecure-Requests" to "1"
-    )
 
     // --- MAIN PAGE ---
     override suspend fun getMainPage(page: Int, request: MainPageRequest): HomePageResponse {
@@ -52,7 +44,7 @@ class LayarKacaProvider : MainAPI() {
         val headers = mapOf(
             "Origin" to mainUrl,
             "Referer" to "$mainUrl/",
-            "User-Agent" to turboHeaders["User-Agent"]!!
+            "User-Agent" to "Mozilla/5.0 (Linux; Android 10; K) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/137.0.0.0 Mobile Safari/537.36"
         )
 
         try {
@@ -171,90 +163,70 @@ class LayarKacaProvider : MainAPI() {
         }
     }
 
-    // --- LOAD LINKS ---
+    // --- LOAD LINKS (CLEAN UI & FIX 3001) ---
     override suspend fun loadLinks(
         data: String,
         isCasting: Boolean,
         subtitleCallback: (SubtitleFile) -> Unit,
         callback: (ExtractorLink) -> Unit
     ): Boolean {
-        val document = app.get(data).document
+        var currentUrl = data
+        var document = app.get(currentUrl).document
 
-        // Cari iframe utama
-        val rawIframeUrl = document.select("iframe#main-player").attr("src")
-        var mainIframeUrl = fixUrl(rawIframeUrl)
-
-        // Fallback jika iframe utama kosong
-        if (mainIframeUrl.isEmpty()) {
-            mainIframeUrl = document.select("ul#player-list li a").firstOrNull()?.attr("data-url")?.let { fixUrl(it) } ?: ""
+        val redirectButton = document.select("a:contains(Buka Sekarang), a.btn:contains(Nontondrama)").first()
+        if (redirectButton != null && redirectButton.attr("href").isNotEmpty()) {
+            currentUrl = fixUrl(redirectButton.attr("href"))
+            document = app.get(currentUrl).document
         }
 
-        if (mainIframeUrl.isNotBlank()) {
-            if (mainIframeUrl.contains("playeriframe.sbs") || mainIframeUrl.contains("turbovid") || mainIframeUrl.contains("emturbovid")) {
-                // Ekstraktor khusus TurboVid
-                extractTurboVid(mainIframeUrl, data, callback)
-            } else {
-                loadExtractor(mainIframeUrl, data, subtitleCallback, callback)
+        val playerLinks = document.select("ul#player-list li a").map { it.attr("data-url").ifEmpty { it.attr("href") } }
+        val mainIframe = document.select("iframe#main-player").attr("src")
+        val allSources = (playerLinks + mainIframe).filter { it.isNotBlank() }.map { fixUrl(it) }.distinct()
+
+        allSources.forEach { url ->
+            val directLoaded = loadExtractor(url, currentUrl, subtitleCallback, callback)
+            if (!directLoaded) {
+                try {
+                    val response = app.get(url, referer = currentUrl)
+                    val wrapperUrl = response.url
+                    val iframePage = response.document
+
+                    // Nested Iframes
+                    iframePage.select("iframe").forEach { 
+                        loadExtractor(fixUrl(it.attr("src")), wrapperUrl, subtitleCallback, callback) 
+                    }
+                    
+                    // Manual Unwrap (Kalau Extractor di atas gagal)
+                    val scriptHtml = iframePage.html().replace("\\/", "/")
+                    Regex("(?i)https?://[^\"]+\\.(m3u8|mp4)(?:\\?[^\"']*)?").findAll(scriptHtml).forEach { match ->
+                        val streamUrl = match.value
+                        val isM3u8 = streamUrl.contains("m3u8", ignoreCase = true)
+                        
+                        // Origin dynamic sesuai wrapper
+                        val originUrl = try { URI(wrapperUrl).let { "${it.scheme}://${it.host}" } } catch(e:Exception) { "https://playeriframe.sbs" }
+                        
+                        val headers = mapOf(
+                            "User-Agent" to "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
+                            "Referer" to wrapperUrl,
+                            "Origin" to originUrl
+                        )
+
+                        callback.invoke(
+                            newExtractorLink(
+                                source = "LK21 VIP",
+                                name = "LK21 VIP",
+                                url = streamUrl,
+                                type = if (isM3u8) ExtractorLinkType.M3U8 else ExtractorLinkType.VIDEO
+                            ) {
+                                this.referer = wrapperUrl
+                                this.quality = Qualities.Unknown.value
+                                this.headers = headers
+                            }
+                        )
+                    }
+                } catch (e: Exception) {}
             }
         }
         return true
-    }
-
-    // --- CUSTOM EXTRACTOR FOR TURBOVID / PLAYERIFRAME ---
-    private suspend fun extractTurboVid(url: String, referer: String, callback: (ExtractorLink) -> Unit) {
-        try {
-            // 1. Request ke Wrapper (playeriframe.sbs)
-            val wrapperHeaders = turboHeaders.toMutableMap()
-            wrapperHeaders["Referer"] = referer
-
-            val responseWrapper = app.get(url, headers = wrapperHeaders)
-            var targetUrl = responseWrapper.url
-            var pageContent = responseWrapper.text
-
-            // Cek jika ada inner iframe (turbovidhls.com)
-            val soup = responseWrapper.document
-            val innerIframe = soup.select("iframe").attr("src")
-            if (innerIframe.isNotEmpty() && !targetUrl.contains("turbovid") && !targetUrl.contains("emturbovid")) {
-                targetUrl = fixUrl(innerIframe)
-                pageContent = app.get(targetUrl, headers = mapOf("Referer" to "https://playeriframe.sbs/")).text
-            }
-
-            // 2. Ambil Link M3U8
-            val m3u8Regex = Regex("(?i)(?:file|source)\\s*:\\s*[\"']([^\"']+\\.m3u8[^\"']*)[\"']")
-            val match = m3u8Regex.find(pageContent)
-
-            if (match != null) {
-                val m3u8Url = match.groupValues[1]
-                
-                // --- LOGIKA HEADER FINAL (BERDASARKAN ANALISIS AVATAR) ---
-                // Server 'turbosplayer' dan 'cdn4' sangat ketat soal Origin.
-                // Kita hardcode Origin ke 'https://turbovidhls.com' agar aman.
-                val origin = "https://turbovidhls.com"
-
-                val videoHeaders = mapOf(
-                    "Origin" to origin,
-                    "Referer" to "$origin/", // Referer diset sama dengan Origin agar konsisten
-                    "User-Agent" to turboHeaders["User-Agent"]!!,
-                    "Accept" to "*/*",
-                    "Sec-Fetch-Site" to "cross-site",
-                    "Sec-Fetch-Mode" to "cors"
-                )
-
-                callback.invoke(
-                    newExtractorLink(
-                        source = "LK21 VIP",
-                        name = "LK21 VIP (Turbo)",
-                        url = m3u8Url,
-                        type = ExtractorLinkType.M3U8
-                    ) {
-                        this.referer = "$origin/"
-                        this.quality = Qualities.Unknown.value
-                        this.headers = videoHeaders
-                    }
-                )
-            }
-        } catch (e: Exception) {
-            e.printStackTrace()
-        }
     }
 }
