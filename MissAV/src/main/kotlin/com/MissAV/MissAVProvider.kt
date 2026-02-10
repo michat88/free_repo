@@ -2,9 +2,9 @@ package com.MissAV
 
 import com.lagradost.cloudstream3.*
 import com.lagradost.cloudstream3.utils.ExtractorLink
-import com.lagradost.cloudstream3.utils.ExtractorLinkType
 import com.lagradost.cloudstream3.utils.Qualities
-import com.lagradost.cloudstream3.utils.newExtractorLink
+// Import ini untuk membuka kode enkripsi JS
+import com.lagradost.cloudstream3.utils.getAndUnpack 
 import org.jsoup.nodes.Element
 
 class MissAVProvider : MainAPI() {
@@ -14,7 +14,6 @@ class MissAVProvider : MainAPI() {
     override var lang = "id"
     override val supportedTypes = setOf(TvType.NSFW)
 
-    // --- 1. DEFINISI KATEGORI UTAMA ---
     override val mainPage = mainPageOf(
         "$mainUrl/$lang/uncensored-leak" to "Kebocoran Tanpa Sensor",
         "$mainUrl/$lang/release" to "Keluaran Terbaru",
@@ -22,7 +21,6 @@ class MissAVProvider : MainAPI() {
         "$mainUrl/$lang/genres/Wanita%20Menikah/Ibu%20Rumah%20Tangga" to "Wanita Menikah"
     )
 
-    // --- 2. MAIN PAGE ---
     override suspend fun getMainPage(page: Int, request: MainPageRequest): HomePageResponse? {
         val url = if (page > 1) "${request.data}?page=$page" else request.data
         
@@ -43,7 +41,6 @@ class MissAVProvider : MainAPI() {
             })
         }
         
-        // FIX: Menggunakan HomePageList untuk mengatur isHorizontalImages
         return newHomePageResponse(
             HomePageList(
                 name = request.name,
@@ -54,7 +51,6 @@ class MissAVProvider : MainAPI() {
         )
     }
 
-    // --- 3. SEARCH ---
     override suspend fun search(query: String): List<SearchResponse> {
         val fixedQuery = query.trim().replace(" ", "-")
         val url = "$mainUrl/$lang/search/$fixedQuery"
@@ -83,7 +79,6 @@ class MissAVProvider : MainAPI() {
         }
     }
 
-    // --- 4. LOAD ---
     override suspend fun load(url: String): LoadResponse? {
         val document = app.get(url).document
 
@@ -98,7 +93,7 @@ class MissAVProvider : MainAPI() {
         }
     }
 
-    // --- 5. LOAD LINKS ---
+    @Suppress("DEPRECATION") 
     override suspend fun loadLinks(
         data: String,
         isCasting: Boolean,
@@ -106,8 +101,18 @@ class MissAVProvider : MainAPI() {
         callback: (ExtractorLink) -> Unit
     ): Boolean {
         
-        val text = app.get(data).text
-        val m3u8Regex = Regex("""(https:\\/\\/[a-zA-Z0-9\-\._~:\/\?#\[\]@!$&'\(\)*+,;=]+?\.m3u8)""")
+        var text = app.get(data).text
+        
+        // PENTING: Gunakan getAndUnpack()
+        // Ini akan membuka kode javascript yang di-pack (eval function)
+        // dimana biasanya link .m3u8 disembunyikan.
+        text = getAndUnpack(text) 
+
+        // Regex yang lebih kuat:
+        // Menangkap "https://" ATAU "https:\/\/" 
+        // Diikuti karakter apa saja sampai ketemu .m3u8
+        val m3u8Regex = Regex("""(https?:\\?\/\\?\/[^"']+\.m3u8)""")
+        
         val matches = m3u8Regex.findAll(text)
         
         if (matches.count() > 0) {
@@ -115,7 +120,7 @@ class MissAVProvider : MainAPI() {
                 val rawUrl = match.groupValues[1]
                 val fixedUrl = rawUrl.replace("\\/", "/")
 
-                val qualityVal = when {
+                val quality = when {
                     fixedUrl.contains("1280x720") || fixedUrl.contains("720p") -> Qualities.P720.value
                     fixedUrl.contains("1920x1080") || fixedUrl.contains("1080p") -> Qualities.P1080.value
                     fixedUrl.contains("842x480") || fixedUrl.contains("480p") -> Qualities.P480.value
@@ -125,17 +130,15 @@ class MissAVProvider : MainAPI() {
 
                 val sourceName = if (fixedUrl.contains("surrit")) "Surrit (HD)" else "MissAV (Backup)"
 
-                // FIX: Menggunakan newExtractorLink dengan benar (menggunakan lambda block)
                 callback.invoke(
-                    newExtractorLink(
+                    ExtractorLink(
                         source = this.name,
-                        name = "$sourceName $qualityVal",
+                        name = "$sourceName $quality",
                         url = fixedUrl,
-                        type = ExtractorLinkType.M3U8
-                    ) {
-                        this.referer = data
-                        this.quality = qualityVal
-                    }
+                        referer = data,
+                        quality = quality,
+                        isM3u8 = true 
+                    )
                 )
             }
             return true
