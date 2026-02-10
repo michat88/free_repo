@@ -205,13 +205,12 @@ open class StreamWishExtractor : ExtractorApi() {
 }
 
 // ==========================================
-// 5. DAPUR BYSE / BYSEBUHO (Custom)
+// 5. DAPUR BYSE / BYSEBUHO (Custom - Prerelease Removed)
 // ==========================================
-@Prerelease class Bysezejataos : ByseSX() { override var name = "Bysezejataos"; override var mainUrl = "https://bysezejataos.com" }
-@Prerelease class ByseBuho : ByseSX() { override var name = "ByseBuho"; override var mainUrl = "https://bysebuho.com" }
-@Prerelease class ByseVepoin : ByseSX() { override var name = "ByseVepoin"; override var mainUrl = "https://bysevepoin.com" }
+class Bysezejataos : ByseSX() { override var name = "Bysezejataos"; override var mainUrl = "https://bysezejataos.com" }
+class ByseBuho : ByseSX() { override var name = "ByseBuho"; override var mainUrl = "https://bysebuho.com" }
+class ByseVepoin : ByseSX() { override var name = "ByseVepoin"; override var mainUrl = "https://bysevepoin.com" }
 
-@Prerelease
 open class ByseSX : ExtractorApi() {
     override var name = "Byse"
     override var mainUrl = "https://byse.sx"
