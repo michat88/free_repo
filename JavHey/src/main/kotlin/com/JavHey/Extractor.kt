@@ -7,17 +7,16 @@ import com.lagradost.cloudstream3.utils.Qualities
 import com.lagradost.cloudstream3.app
 import com.lagradost.cloudstream3.utils.M3u8Helper
 import com.lagradost.cloudstream3.utils.newExtractorLink
+import java.net.URI
 
 // --- DAFTAR SERVER ---
-// Kita buat kelas untuk setiap domain yang muncul di Logcat
 class Hglink : JavHeyDood("https://hglink.to", "Hglink")
 class Haxloppd : JavHeyDood("https://haxloppd.com", "Haxloppd")
 class Minochinos : JavHeyDood("https://minochinos.com", "Minochinos")
 class Bysebuho : JavHeyDood("https://bysebuho.com", "Bysebuho")
 class GoTv : JavHeyDood("https://go-tv.lol", "GoTv")
 
-// --- LOGIKA UTAMA (PARENT CLASS) ---
-// Semua server di atas mewarisi logika dari kelas ini
+// --- LOGIKA UTAMA (JavHeyDood) ---
 open class JavHeyDood(override var mainUrl: String, override var name: String) : ExtractorApi() {
     override val requiresReferer = true
 
@@ -27,34 +26,42 @@ open class JavHeyDood(override var mainUrl: String, override var name: String) :
         subtitleCallback: (com.lagradost.cloudstream3.SubtitleFile) -> Unit,
         callback: (ExtractorLink) -> Unit
     ) {
-        // 1. Standarisasi URL (ubah /v/ menjadi /e/ agar konsisten)
+        // 1. Standarisasi URL (ubah /v/ menjadi /e/)
         val targetUrl = url.replace("/v/", "/e/")
         
         // 2. Ambil halaman Embed
-        val response = app.get(targetUrl, referer = "https://javhey.com/").text
+        val responseReq = app.get(targetUrl, referer = "https://javhey.com/")
+        val response = responseReq.text
+        
+        // 3. Dapatkan Domain Asli (PENTING UNTUK HAXLOPPD/MINOCHINOS)
+        // Kita pakai domain dari URL akhir (setelah redirect jika ada), bukan hardcode dood.li
+        val currentHost = "https://" + URI(responseReq.url).host
 
-        // 3. Cari endpoint pass_md5 (Kunci rahasia Doodstream)
+        // 4. Cari endpoint pass_md5
         val md5Pattern = Regex("""/pass_md5/[^']*""")
         val md5Match = md5Pattern.find(response)?.value
 
         if (md5Match != null) {
-            val trueUrl = "https://dood.li$md5Match" // Gunakan domain dood.li untuk handshake agar lebih stabil
+            // PERUBAHAN DI SINI: Gunakan currentHost, bukan "https://dood.li"
+            val trueUrl = "$currentHost$md5Match"
             
-            // 4. Request ke pass_md5
+            // 5. Request Token
+            // Referer WAJIB link embed aslinya
             val tokenResponse = app.get(trueUrl, referer = targetUrl).text
 
-            // 5. Buat String acak
+            // 6. Buat String acak & URL Video
             val randomString = generateRandomString()
             val videoUrl = "$tokenResponse$randomString?token=${md5Match.substringAfterLast("/")}&expiry=${System.currentTimeMillis()}"
 
-            // 6. Dapatkan kualitas & kirim link
+            // 7. Kirim link video (M3U8)
             M3u8Helper.generateM3u8(
                 name,
                 videoUrl,
-                targetUrl 
+                targetUrl, // Referer header untuk pemutar video
+                headers = mapOf("Origin" to currentHost) // Tambahan header Origin biar lebih aman
             ).forEach(callback)
         } else {
-            // Fallback: Cari redirect langsung
+            // Fallback: Cari redirect langsung (window.location.replace)
             val redirectMatch = Regex("""window\.location\.replace\('([^']*)'\)""").find(response)
             if (redirectMatch != null) {
                 callback.invoke(
