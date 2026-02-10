@@ -2,10 +2,14 @@ package com.MissAV
 
 import com.lagradost.cloudstream3.*
 import com.lagradost.cloudstream3.utils.ExtractorLink
+import com.lagradost.cloudstream3.utils.ExtractorLinkType
 import com.lagradost.cloudstream3.utils.Qualities
 import com.lagradost.cloudstream3.utils.getAndUnpack
+import com.lagradost.cloudstream3.utils.newExtractorLink
 import org.jsoup.nodes.Element
 
+// KITA TAMBAHKAN INI AGAR BISA PAKAI FITUR BARU TANPA ERROR
+@OptIn(com.lagradost.cloudstream3.Prerelease::class)
 class MissAVProvider : MainAPI() {
     override var mainUrl = "https://missav.ws"
     override var name = "MissAV"
@@ -13,7 +17,7 @@ class MissAVProvider : MainAPI() {
     override var lang = "id"
     override val supportedTypes = setOf(TvType.NSFW)
 
-    // --- 1. MAIN PAGE KATEGORI ---
+    // --- 1. MAIN PAGE ---
     override val mainPage = mainPageOf(
         "$mainUrl/$lang/uncensored-leak" to "Kebocoran Tanpa Sensor",
         "$mainUrl/$lang/release" to "Keluaran Terbaru",
@@ -80,7 +84,7 @@ class MissAVProvider : MainAPI() {
         }
     }
 
-    // --- 3. LOAD (UPDATE DESKRIPSI) ---
+    // --- 3. LOAD ---
     override suspend fun load(url: String): LoadResponse? {
         val document = app.get(url).document
 
@@ -89,10 +93,7 @@ class MissAVProvider : MainAPI() {
         val poster = document.selectFirst("meta[property='og:image']")?.attr("content")
             ?: document.selectFirst("video.player")?.attr("poster")
 
-        // PERBAIKAN DESKRIPSI:
-        // Mencari semua elemen 'div' dengan class 'text-secondary'
-        // Lalu mengambil yang teksnya PALING PANJANG (biasanya itu sinopsis)
-        // Jika gagal, ambil dari meta tag og:description
+        // Mengambil deskripsi dari teks terpanjang di class text-secondary
         val description = document.select("div.text-secondary")
             .maxByOrNull { it.text().length }?.text()?.trim()
             ?: document.selectFirst("meta[property='og:description']")?.attr("content")
@@ -103,8 +104,7 @@ class MissAVProvider : MainAPI() {
         }
     }
 
-    // --- 4. LOAD LINKS ---
-    @Suppress("DEPRECATION_ERROR") 
+    // --- 4. LOAD LINKS (PENULISAN BARU) ---
     override suspend fun loadLinks(
         data: String,
         isCasting: Boolean,
@@ -123,7 +123,7 @@ class MissAVProvider : MainAPI() {
                 val rawUrl = match.groupValues[1]
                 val fixedUrl = rawUrl.replace("\\/", "/")
 
-                val quality = when {
+                val qualityVal = when {
                     fixedUrl.contains("1280x720") || fixedUrl.contains("720p") -> Qualities.P720.value
                     fixedUrl.contains("1920x1080") || fixedUrl.contains("1080p") -> Qualities.P1080.value
                     fixedUrl.contains("842x480") || fixedUrl.contains("480p") -> Qualities.P480.value
@@ -133,15 +133,19 @@ class MissAVProvider : MainAPI() {
 
                 val sourceName = if (fixedUrl.contains("surrit")) "Surrit (HD)" else "MissAV (Backup)"
 
+                // IMPLEMENTASI BARU
+                // Menggunakan newExtractorLink dan ExtractorLinkType
                 callback.invoke(
-                    ExtractorLink(
+                    newExtractorLink(
                         source = this.name,
-                        name = "$sourceName $quality",
+                        name = "$sourceName $qualityVal",
                         url = fixedUrl,
-                        referer = data,
-                        quality = quality,
-                        isM3u8 = true 
-                    )
+                        type = ExtractorLinkType.M3U8
+                    ) {
+                        // Parameter tambahan masuk di sini (initializer lambda)
+                        this.referer = data
+                        this.quality = qualityVal
+                    }
                 )
             }
             return true
