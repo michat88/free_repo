@@ -2,7 +2,6 @@ package com.MissAV
 
 import com.lagradost.cloudstream3.*
 import com.lagradost.cloudstream3.utils.ExtractorLink
-import com.lagradost.cloudstream3.utils.ExtractorLinkType
 import com.lagradost.cloudstream3.utils.Qualities
 import org.jsoup.nodes.Element
 
@@ -14,7 +13,6 @@ class MissAVProvider : MainAPI() {
     override val supportedTypes = setOf(TvType.NSFW)
 
     // --- 1. DEFINISI KATEGORI UTAMA ---
-    // Menggunakan variable dinamis agar tidak rusak jika 'dm628' berubah
     override val mainPage = mainPageOf(
         "$mainUrl/$lang/uncensored-leak" to "Kebocoran Tanpa Sensor",
         "$mainUrl/$lang/release" to "Keluaran Terbaru",
@@ -22,23 +20,19 @@ class MissAVProvider : MainAPI() {
         "$mainUrl/$lang/genres/Wanita%20Menikah/Ibu%20Rumah%20Tangga" to "Wanita Menikah"
     )
 
-    // --- 2. MAIN PAGE (Updated Selector) ---
+    // --- 2. MAIN PAGE (FIXED) ---
     override suspend fun getMainPage(page: Int, request: MainPageRequest): HomePageResponse? {
-        // Support pagination: Tambahkan ?page=X jika page > 1
         val url = if (page > 1) "${request.data}?page=$page" else request.data
         
         val document = app.get(url).document
         val homeItems = ArrayList<SearchResponse>()
 
-        // UPDATE SELECTOR: Berdasarkan HTML, item ada di class "thumbnail"
         document.select("div.thumbnail").forEach { element ->
             val linkElement = element.selectFirst("a.text-secondary") ?: return@forEach
             val href = linkElement.attr("href")
             val fixedUrl = fixUrl(href)
             
             val title = linkElement.text().trim()
-            
-            // Poster ada di elemen img sebelumnya
             val img = element.selectFirst("img")
             val posterUrl = img?.attr("data-src") ?: img?.attr("src")
 
@@ -47,10 +41,18 @@ class MissAVProvider : MainAPI() {
             })
         }
         
-        return newHomePageResponse(request.name, homeItems, isHorizontal = true)
+        // PERBAIKAN: Membungkus item ke dalam HomePageList agar sesuai dengan error log
+        return newHomePageResponse(
+            HomePageList(
+                name = request.name,
+                list = homeItems,
+                isHorizontal = true
+            ),
+            hasNext = true
+        )
     }
 
-    // --- 3. SEARCH (Updated Selector) ---
+    // --- 3. SEARCH ---
     override suspend fun search(query: String): List<SearchResponse> {
         val fixedQuery = query.trim().replace(" ", "-")
         val url = "$mainUrl/$lang/search/$fixedQuery"
@@ -59,14 +61,12 @@ class MissAVProvider : MainAPI() {
             val document = app.get(url).document
             val results = ArrayList<SearchResponse>()
 
-            // UPDATE SELECTOR: Sama dengan Main Page
             document.select("div.thumbnail").forEach { element ->
                 val linkElement = element.selectFirst("a.text-secondary") ?: return@forEach
                 val href = linkElement.attr("href")
                 val fixedUrl = fixUrl(href)
                 
                 val title = linkElement.text().trim()
-                
                 val img = element.selectFirst("img")
                 val posterUrl = img?.attr("data-src") ?: img?.attr("src")
 
@@ -81,27 +81,23 @@ class MissAVProvider : MainAPI() {
         }
     }
 
-    // --- 4. LOAD (Detail Video) ---
+    // --- 4. LOAD (FIXED LinkData) ---
     override suspend fun load(url: String): LoadResponse? {
         val document = app.get(url).document
 
-        // Mengambil judul dari h1
         val title = document.selectFirst("h1.text-base")?.text()?.trim() ?: "Unknown Title"
-        
-        // Poster resolusi tinggi dari meta tag
         val poster = document.selectFirst("meta[property='og:image']")?.attr("content")
             ?: document.selectFirst("video.player")?.attr("poster")
-
-        // Deskripsi
         val description = document.selectFirst("div.text-secondary.mb-2")?.text()?.trim()
 
-        return newMovieLoadResponse(title, url, TvType.NSFW, LinkData(url)) {
+        // PERBAIKAN: Menghapus LinkData() dan langsung menggunakan string URL
+        return newMovieLoadResponse(title, url, TvType.NSFW, url) {
             this.posterUrl = poster
             this.plot = description
         }
     }
 
-    // --- 5. LOAD LINKS (Player) ---
+    // --- 5. LOAD LINKS (FIXED Prerelease API) ---
     override suspend fun loadLinks(
         data: String,
         isCasting: Boolean,
@@ -128,6 +124,7 @@ class MissAVProvider : MainAPI() {
 
                 val sourceName = if (fixedUrl.contains("surrit")) "Surrit (HD)" else "MissAV (Backup)"
 
+                // PERBAIKAN: Kembali menggunakan isM3u8 = true agar kompatibel dengan versi Stable
                 callback.invoke(
                     ExtractorLink(
                         source = this.name,
@@ -135,7 +132,7 @@ class MissAVProvider : MainAPI() {
                         url = fixedUrl,
                         referer = data,
                         quality = quality,
-                        type = ExtractorLinkType.M3U8
+                        isM3u8 = true 
                     )
                 )
             }
