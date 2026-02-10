@@ -71,9 +71,11 @@ class MissAVProvider : MainAPI() {
         }
     }
 
-    // --- FUNGSI LOAD (DETAIL VIDEO + REKOMENDASI) ---
+    // --- FUNGSI LOAD (DETAIL VIDEO + REKOMENDASI CERDAS) ---
     override suspend fun load(url: String): LoadResponse? {
         val document = app.get(url).document
+        
+        // Ambil Data Utama
         val title = document.selectFirst("h1.text-base")?.text()?.trim() ?: "Unknown Title"
         val poster = document.selectFirst("meta[property='og:image']")?.attr("content")
             ?: document.selectFirst("video.player")?.attr("poster")
@@ -81,25 +83,57 @@ class MissAVProvider : MainAPI() {
             .maxByOrNull { it.text().length }?.text()?.trim()
             ?: document.selectFirst("meta[property='og:description']")?.attr("content")
 
-        // === FITUR SARAN FILM (REKOMENDASI) ===
-        // Mengambil daftar video lain yang ada di halaman tersebut
-        val recommendations = document.select("div.thumbnail").mapNotNull { element ->
-            val linkElement = element.selectFirst("a.text-secondary") ?: return@mapNotNull null
-            val href = linkElement.attr("href")
-            val fixedUrl = fixUrl(href)
-            val recTitle = linkElement.text().trim()
-            val img = element.selectFirst("img")
-            val recPoster = img?.attr("data-src") ?: img?.attr("src")
-
-            newMovieSearchResponse(recTitle, fixedUrl, TvType.NSFW) {
-                this.posterUrl = recPoster
+        // === FITUR SARAN FILM CERDAS ===
+        // Mengambil rekomendasi dari halaman Aktris/Genre agar gambar valid
+        val recommendations = ArrayList<SearchResponse>()
+        
+        try {
+            // 1. Coba cari Link Aktris dulu (Prioritas Utama)
+            var recUrl = document.selectFirst("div.text-secondary a[href*='/actresses/']")?.attr("href")
+            
+            // 2. Kalau tidak ada Aktris, cari Link Genre atau Pembuat
+            if (recUrl == null) {
+                recUrl = document.selectFirst("div.text-secondary a[href*='/makers/']")?.attr("href")
             }
+            if (recUrl == null) {
+                recUrl = document.selectFirst("div.text-secondary a[href*='/genres/']")?.attr("href")
+            }
+
+            // 3. Jika ketemu link referensi, buka halamannya dan ambil daftar videonya
+            if (recUrl != null) {
+                val fixedRecUrl = fixUrl(recUrl)
+                val recDoc = app.get(fixedRecUrl).document
+                
+                recDoc.select("div.thumbnail").forEach { element ->
+                    val linkElement = element.selectFirst("a.text-secondary") ?: return@forEach
+                    val href = linkElement.attr("href")
+                    val fixedVideoUrl = fixUrl(href)
+
+                    // Jangan masukkan video yang sedang ditonton ke daftar saran
+                    if (fixedVideoUrl != url) {
+                        val recTitle = linkElement.text().trim()
+                        val img = element.selectFirst("img")
+                        val recPoster = img?.attr("data-src") ?: img?.attr("src")
+
+                        // Pastikan poster ada agar tidak muncul kotak abu-abu
+                        if (!recPoster.isNullOrEmpty()) {
+                            recommendations.add(
+                                newMovieSearchResponse(recTitle, fixedVideoUrl, TvType.NSFW) {
+                                    this.posterUrl = recPoster
+                                }
+                            )
+                        }
+                    }
+                }
+            }
+        } catch (e: Exception) {
+            e.printStackTrace()
         }
 
         return newMovieLoadResponse(title, url, TvType.NSFW, url) {
             this.posterUrl = poster
             this.plot = description
-            this.recommendations = recommendations // Masukkan saran film ke sini
+            this.recommendations = recommendations
         }
     }
 
@@ -111,10 +145,11 @@ class MissAVProvider : MainAPI() {
             
             val searchResults = searchDoc.select("table.sub-table tbody tr td:nth-child(1) > a")
             
+            // Ambil 15 hasil teratas untuk dicek
             searchResults.take(15).forEach { linkElement ->
                 val resultTitle = linkElement.text().trim()
                 
-                // FILTER: Judul subtitle harus mengandung Kode Video (misal: SSNI-528)
+                // FILTER: Judul subtitle WAJIB mengandung Kode Video (misal: SSNI-528)
                 if (resultTitle.contains(code, ignoreCase = true)) {
                     var detailPath = linkElement.attr("href")
                     if (!detailPath.startsWith("http")) {
@@ -139,13 +174,14 @@ class MissAVProvider : MainAPI() {
                                 
                                 subtitleCallback.invoke(
                                     SubtitleFile(
-                                        lang = rawLang, 
+                                        lang = rawLang, // Biarkan nama asli agar player melakukan grouping
                                         url = finalUrl
                                     )
                                 )
                             }
                         }
                     } catch (e: Exception) {
+                        // Skip error per item
                     }
                 }
             }
@@ -172,6 +208,7 @@ class MissAVProvider : MainAPI() {
             it.groupValues[1].replace("\\/", "/") 
         }.toSet()
 
+        // Filter nama sumber agar tidak ganda di UI
         val addedNames = mutableListOf<String>()
 
         if (uniqueUrls.isNotEmpty()) {
@@ -186,14 +223,14 @@ class MissAVProvider : MainAPI() {
                             name = sourceName,
                             url = fixedUrl,
                             referer = data,
-                            quality = Qualities.Unknown.value,
+                            quality = Qualities.Unknown.value, // Unknown = Auto (Player baca track dari m3u8)
                             isM3u8 = true
                         )
                     )
                 }
             }
 
-            // PROSES KODE ID
+            // --- PROSES KODE ID & SUBTITLE ---
             val codeRegex = Regex("""([a-zA-Z]{2,5}-\d{3,5})""")
             val codeMatch = codeRegex.find(data)
             val code = codeMatch?.value
