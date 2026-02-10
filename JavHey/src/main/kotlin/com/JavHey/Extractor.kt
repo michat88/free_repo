@@ -6,16 +6,19 @@ import com.lagradost.cloudstream3.utils.INFER_TYPE
 import com.lagradost.cloudstream3.utils.Qualities
 import com.lagradost.cloudstream3.app
 import com.lagradost.cloudstream3.utils.M3u8Helper
-import com.lagradost.cloudstream3.utils.newExtractorLink // PENTING: Import baru ini
+import com.lagradost.cloudstream3.utils.newExtractorLink
 
-class Hglink : Haxloppd() {
-    override var mainUrl = "https://hglink.to"
-    override var name = "Hglink"
-}
+// --- DAFTAR SERVER ---
+// Kita buat kelas untuk setiap domain yang muncul di Logcat
+class Hglink : JavHeyDood("https://hglink.to", "Hglink")
+class Haxloppd : JavHeyDood("https://haxloppd.com", "Haxloppd")
+class Minochinos : JavHeyDood("https://minochinos.com", "Minochinos")
+class Bysebuho : JavHeyDood("https://bysebuho.com", "Bysebuho")
+class GoTv : JavHeyDood("https://go-tv.lol", "GoTv")
 
-open class Haxloppd : ExtractorApi() {
-    override var mainUrl = "https://haxloppd.com"
-    override var name = "Haxloppd"
+// --- LOGIKA UTAMA (PARENT CLASS) ---
+// Semua server di atas mewarisi logika dari kelas ini
+open class JavHeyDood(override var mainUrl: String, override var name: String) : ExtractorApi() {
     override val requiresReferer = true
 
     override suspend fun getUrl(
@@ -24,12 +27,9 @@ open class Haxloppd : ExtractorApi() {
         subtitleCallback: (com.lagradost.cloudstream3.SubtitleFile) -> Unit,
         callback: (ExtractorLink) -> Unit
     ) {
-        // 1. Tangani Redirect dari hglink.to ke haxloppd.com jika perlu
-        var targetUrl = url
-        if (url.contains("hglink.to")) {
-            targetUrl = url.replace("hglink.to", "haxloppd.com")
-        }
-
+        // 1. Standarisasi URL (ubah /v/ menjadi /e/ agar konsisten)
+        val targetUrl = url.replace("/v/", "/e/")
+        
         // 2. Ambil halaman Embed
         val response = app.get(targetUrl, referer = "https://javhey.com/").text
 
@@ -38,16 +38,16 @@ open class Haxloppd : ExtractorApi() {
         val md5Match = md5Pattern.find(response)?.value
 
         if (md5Match != null) {
-            val trueUrl = "$mainUrl$md5Match"
+            val trueUrl = "https://dood.li$md5Match" // Gunakan domain dood.li untuk handshake agar lebih stabil
             
-            // 4. Request ke pass_md5 untuk mendapatkan Token Stream awal
+            // 4. Request ke pass_md5
             val tokenResponse = app.get(trueUrl, referer = targetUrl).text
 
             // 5. Buat String acak
             val randomString = generateRandomString()
             val videoUrl = "$tokenResponse$randomString?token=${md5Match.substringAfterLast("/")}&expiry=${System.currentTimeMillis()}"
 
-            // 6. Dapatkan kualitas & kirim link (M3u8Helper aman digunakan)
+            // 6. Dapatkan kualitas & kirim link
             M3u8Helper.generateM3u8(
                 name,
                 videoUrl,
@@ -57,7 +57,6 @@ open class Haxloppd : ExtractorApi() {
             // Fallback: Cari redirect langsung
             val redirectMatch = Regex("""window\.location\.replace\('([^']*)'\)""").find(response)
             if (redirectMatch != null) {
-                // PERBAIKAN DI SINI: Menggunakan newExtractorLink
                 callback.invoke(
                     newExtractorLink(
                         source = name,
