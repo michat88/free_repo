@@ -39,6 +39,7 @@ class MissAVProvider : MainAPI() {
             })
         }
         
+        // Membungkus ke HomePageList agar layout Horizontal muncul di aplikasi
         return newHomePageResponse(
             HomePageList(
                 name = request.name,
@@ -94,13 +95,12 @@ class MissAVProvider : MainAPI() {
         }
     }
 
-    // --- LOGIKA SUBTITLE: MENARIK SEMUA VERSI INDONESIA ---
+    // --- LOGIKA SUBTITLE: TARIK SEMUA VERSI INDONESIA ---
     private suspend fun fetchSubtitleCat(code: String, subtitleCallback: (SubtitleFile) -> Unit) {
         try {
             val searchUrl = "https://www.subtitlecat.com/index.php?search=$code"
             val searchDoc = app.get(searchUrl).document
             
-            // Mencari link detail yang mengandung kode film agar lebih akurat
             val searchResults = searchDoc.select("table.sub-table tbody tr td:nth-child(1) > a")
             val targetResult = searchResults.find { it.text().contains(code, ignoreCase = true) } ?: searchResults.firstOrNull()
 
@@ -114,36 +114,26 @@ class MissAVProvider : MainAPI() {
                 val detailDoc = app.get(detailPath).document
                 val subItems = detailDoc.select("div.sub-single")
                 
-                var idIndex = 1 // Penomoran untuk versi Indonesia
+                var indoCount = 1 // Counter untuk membedakan versi Indonesia
 
                 subItems.forEach { item ->
                     val langText = item.select("span").getOrNull(1)?.text()?.trim() ?: ""
-                    val downloadEl = item.selectFirst("a.green-link") // Ambil hanya tombol hijau
+                    val downloadEl = item.selectFirst("a.green-link") //
                     val downloadHref = downloadEl?.attr("href")
 
+                    // Tarik SEMUA data yang ada bahasa Indonesian-nya [sesuai permintaan user]
                     if (downloadHref != null && langText.contains("Indonesian", ignoreCase = true)) {
-                        // Analisis tambahan: Cek apakah ada info "translated from ..." di dalam element
-                        val fullInfo = item.text()
-                        val sourceInfo = if (fullInfo.contains("translated from", ignoreCase = true)) {
-                            " (Auto-TR)" // Tandai jika terdeteksi hasil translate otomatis
-                        } else {
-                            ""
-                        }
-
                         val finalUrl = if (downloadHref.startsWith("http")) {
                             downloadHref
                         } else {
                             "https://www.subtitlecat.com$downloadHref"
                         }
                         
-                        // Kirim setiap versi Indonesia ke menu subtitel
+                        // Kirim ke player dengan penomoran agar user bisa pilih versi terbaik
                         subtitleCallback.invoke(
-                            SubtitleFile(
-                                lang = "Indonesian [$idIndex]$sourceInfo",
-                                url = finalUrl
-                            )
+                            newSubtitleFile("Indonesian $indoCount", finalUrl)
                         )
-                        idIndex++
+                        indoCount++
                     }
                 }
             }
@@ -152,7 +142,7 @@ class MissAVProvider : MainAPI() {
         }
     }
 
-    @Suppress("DEPRECATION_ERROR") //
+    @Suppress("DEPRECATION_ERROR") // Tetap pakai ini agar build tidak gagal karena constructor ExtractorLink
     override suspend fun loadLinks(
         data: String,
         isCasting: Boolean,
@@ -160,7 +150,7 @@ class MissAVProvider : MainAPI() {
         callback: (ExtractorLink) -> Unit
     ): Boolean {
         
-        // 1. Ekstraksi Video
+        // 1. Dapatkan Link Video
         var text = app.get(data).text
         text = getAndUnpack(text) //
 
@@ -182,7 +172,7 @@ class MissAVProvider : MainAPI() {
 
                 val sourceName = if (fixedUrl.contains("surrit")) "Surrit (HD)" else "MissAV (Backup)"
 
-                // Menggunakan constructor lama yang stabil
+                // Menggunakan constructor lama sesuai instruksi "jangan diubah" agar kodingan lain aman
                 callback.invoke(
                     ExtractorLink(
                         source = this.name,
@@ -195,13 +185,12 @@ class MissAVProvider : MainAPI() {
                 )
             }
 
-            // 2. Ambil Semua Subtitle Indonesia
+            // 2. Cari Semua Subtitle Indonesia (ADN-753, dll)
             val codeRegex = Regex("""([a-zA-Z]{2,5}-\d{3,5})""")
             val codeMatch = codeRegex.find(data)
             val code = codeMatch?.value
             
             if (code != null) {
-                // Memanggil fungsi pencarian subtitel secara sequential agar aman dari crash
                 fetchSubtitleCat(code, subtitleCallback)
             }
 
