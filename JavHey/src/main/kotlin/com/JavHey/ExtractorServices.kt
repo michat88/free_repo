@@ -6,13 +6,14 @@ import com.lagradost.cloudstream3.utils.AppUtils.tryParseJson
 import com.lagradost.cloudstream3.utils.M3u8Helper.Companion.generateM3u8
 import com.lagradost.cloudstream3.network.WebViewResolver
 import org.jsoup.nodes.Document
+import java.net.URI // <--- INI YANG KETINGGALAN TADI
 import java.util.Base64
 import kotlinx.coroutines.*
 
 /**
- * MANAGER TURBO (V3 Fixed)
- * - Removed .copy() to fix compilation error.
- * - Optimized parallel loading.
+ * MANAGER TURBO (V4 Final Fix)
+ * - Added missing import java.net.URI
+ * - Fixed compilation errors.
  */
 object JavHeyExtractorManager {
 
@@ -95,8 +96,6 @@ open class VidHidePro : ExtractorApi() {
         
         Regex(":\\s*\"(.*?m3u8.*?)\"").findAll(script).forEach { m3u8Match ->
             val hlsUrl = fixUrl(m3u8Match.groupValues[1])
-            // FIX: Hapus .copy(), pass link langsung.
-            // CloudStream akan otomatis menggabungkan link dengan nama "VidHidePro" ke dalam satu grup.
             generateM3u8(name, hlsUrl, referer = "$mainUrl/", headers = headers).forEach(callback)
         }
     }
@@ -124,7 +123,6 @@ open class MixDrop : ExtractorApi() {
         srcRegex.find(unpacked)?.groupValues?.get(1)?.let { link ->
             return listOf(newExtractorLink(name, name, httpsify(link)) {
                 this.referer = url
-                // Request: Unknown Quality agar rapi
                 this.quality = Qualities.Unknown.value 
             })
         }
@@ -153,10 +151,8 @@ open class StreamWishExtractor : ExtractorApi() {
         val file = Regex("""file:\s*"(.*?m3u8.*?)"""").find(script)?.groupValues?.getOrNull(1)
 
         if (!file.isNullOrEmpty()) {
-            // FIX: Hapus .copy()
             generateM3u8(name, file, mainUrl, headers = headers).forEach(callback)
         } else {
-            // Fallback: WebView dengan Timeout 10 Detik
             val resolver = WebViewResolver(
                 interceptUrl = Regex("""txt|m3u8"""), 
                 additionalUrls = listOf(Regex("""txt|m3u8""")), 
@@ -201,7 +197,10 @@ open class DoodLaExtractor : ExtractorApi() {
     override suspend fun getUrl(url: String, referer: String?, subtitleCallback: (SubtitleFile) -> Unit, callback: (ExtractorLink) -> Unit) {
         val embedUrl = url.replace("/d/", "/e/")
         val req = app.get(embedUrl)
+        
+        // FIX: URI sekarang sudah diimport
         val host = URI(req.url).let { "${it.scheme}://${it.host}" }
+        
         val md5 = Regex("/pass_md5/[^']*").find(req.text)?.value ?: return
         val token = md5.substringAfterLast("/")
         val trueUrl = app.get(host + md5, referer = req.url).text + buildString { repeat(10) { append(alphabet.random()) } } + "?token=" + token
