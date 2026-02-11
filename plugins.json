@@ -1,0 +1,24 @@
+[
+    {
+        "iconUrl": "https://www.google.com/s2/favicons?domain=tv7.lk21.am.in&sz=%size%",
+        "fileHash": "sha256-ed68e92d91e4c5ad09fb477e0be0dec22b5e1653a4f6b05adabcb5879d2a0841",
+        "apiVersion": 1,
+        "repositoryUrl": "https://github.com/michat88/free_repo",
+        "fileSize": 45823,
+        "status": 1,
+        "language": "id",
+        "authors": [
+            "aldry84"
+        ],
+        "tvTypes": [
+            "AsianDrama",
+            "TvSeries",
+            "Movie"
+        ],
+        "version": 18,
+        "internalName": "LayarKacaProvider",
+        "description": "rekuesan om Hadi Sulianto",
+        "url": "https://raw.githubusercontent.com/michat88/free_repo/builds/LayarKacaProvider.cs3",
+        "name": "LayarKacaProvider"
+    }
+]
