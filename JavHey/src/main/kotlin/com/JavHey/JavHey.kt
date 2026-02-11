@@ -21,8 +21,8 @@ class JavHey : MainAPI() {
     override val mainPage = mainPageOf(
         "$mainUrl/videos/paling-dilihat/page=" to "Paling Dilihat",
         "$mainUrl/videos/top-rating/page=" to "Top Rating",
-        "$mainUrl/category/12/cuckold-or-ntr/page=" to "CUCKOLD OR NTR VIDEOS",
-        "$mainUrl/category/31/decensored/page=" to "DECENSORED VIDEOS",
+        "$mainUrl/category/12/cuckold-or-ntr/page=" to "CUCKOLD OR NTR",
+        "$mainUrl/category/31/decensored/page=" to "DECENSORED",
         "$mainUrl/category/21/drama/page=" to "Drama",
         "$mainUrl/category/114/female-investigator/page=" to "Investigasi",
         "$mainUrl/category/9/housewife/page=" to "HOUSEWIFE",
@@ -42,7 +42,6 @@ class JavHey : MainAPI() {
         val title = titleElement.text().trim()
         val href = fixUrl(titleElement.attr("href"))
         
-        // Ambil gambar langsung apa adanya
         val imgTag = this.selectFirst("div.item_header img")
         val posterUrl = imgTag?.attr("data-src")?.takeIf { it.isNotEmpty() } 
             ?: imgTag?.attr("src")
@@ -80,8 +79,8 @@ class JavHey : MainAPI() {
         subtitleCallback: (SubtitleFile) -> Unit,
         callback: (ExtractorLink) -> Unit
     ): Boolean {
-        // --- KUNCI V7: Ambil .text (String Mentah) ---
-        // JavHeyExtractorManager V7 butuh String untuk Regex, bukan Document.
+        // --- V7 UPDATE: Ambil Text Mentah (String) ---
+        // Kita kirim String ke ExtractorServices agar parsing Regex bisa bekerja kilat
         val htmlText = app.get(data, headers = headers, timeout = 30).text
         JavHeyExtractorManager.invoke(htmlText, subtitleCallback, callback)
         return true
