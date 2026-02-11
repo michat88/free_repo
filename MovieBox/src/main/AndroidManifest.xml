@@ -1,0 +1,18 @@
+<?xml version="1.0" encoding="utf-8"?>
+<manifest>
+    <metadata>
+        <name>MovieBox</name>
+        <author>MovieBox Team</author>
+        <description>Stream movies and TV shows from MovieBox.ph</description>
+        <iconUrl>https://www.google.com/s2/favicons?domain=moviebox.ph&amp;sz=64</iconUrl>
+        <version>1</version>
+        <language>id</language>
+        <tvTypes>
+            <tvType>Movie</tvType>
+            <tvType>TvSeries</tvType>
+            <tvType>Anime</tvType>
+            <tvType>AsianDrama</tvType>
+        </tvTypes>
+        <status>1</status>
+    </metadata>
+</manifest>
