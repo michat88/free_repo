@@ -7,11 +7,12 @@ import android.content.Context
 @CloudstreamPlugin
 class LayarKacaPlugin : Plugin() {
     override fun load(context: Context) {
-        // Provider Utama
+        // Mendaftarkan Provider Utama
         registerMainAPI(LayarKacaProvider())
         
-        // Extractor Servers
-        registerExtractorAPI(P2PExtractor())        // P2P
-        registerExtractorAPI(F16Extractor())        // CAST (Baru!)
+        // Mendaftarkan 3 Extractor Utama (Tanpa Hydrax)
+        registerExtractorAPI(P2PExtractor())
+        registerExtractorAPI(EmturbovidExtractor())
+        registerExtractorAPI(F16Extractor())
     }
 }
