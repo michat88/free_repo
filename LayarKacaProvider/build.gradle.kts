@@ -1,12 +1,12 @@
 // use an integer for version numbers
-version = 21
+version = 15
 
 
 cloudstream {
     language = "id"
     // All of these properties are optional, you can safely remove them
 
-    description = "rekuesan om Hadi Sulianto"
+    // description = "Lorem Ipsum"
     authors = listOf("aldry84")
 
     /**
@@ -24,6 +24,6 @@ cloudstream {
     )
 
 
-    iconUrl = "https://www.google.com/s2/favicons?domain=tv7.lk21.am.in&sz=%size%"
+    iconUrl = "https://assets.lk21.party/favicons/apple-icon-144x144.png"
 
 }
