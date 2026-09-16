@@ -1,0 +1,8 @@
+{
+  "name": "Premium_RepoX",
+  "description": "CloudStream Premium Repository",
+  "manifestVersion": 1,
+  "pluginLists": [
+    "https://raw.githubusercontent.com/michat88/free_repo/builds/plugins.json"
+  ]
+}

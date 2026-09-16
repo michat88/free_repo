@@ -1,0 +1,23 @@
+[
+    {
+        "url": "https://raw.githubusercontent.com/michat88/free_repo/builds/LayarKacaProvider.cs3",
+        "status": 1,
+        "version": 15,
+        "name": "LayarKacaProvider",
+        "internalName": "LayarKacaProvider",
+        "authors": [
+            "aldry84"
+        ],
+        "fileSize": 112543,
+        "repositoryUrl": "https://github.com/michat88/free_repo",
+        "language": "id",
+        "tvTypes": [
+            "AsianDrama",
+            "TvSeries",
+            "Movie"
+        ],
+        "iconUrl": "https://assets.lk21.party/favicons/apple-icon-144x144.png",
+        "apiVersion": 1,
+        "fileHash": "sha256-57c5379a1059c7778eca2cccb1cdca0babe6778515c7f6f8e73bf45360193dd1"
+    }
+]
